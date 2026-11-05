@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Bersihkan SW - TI Pro</title>
+  <style>
+    body { font-family: sans-serif; padding: 16px; background: #f8fafc; color: #0f172a; }
+    button { padding: 14px 20px; font-size: 16px; font-weight: bold; border-radius: 8px; border: none; cursor: pointer; margin: 6px 4px 6px 0; }
+    .danger { background: #dc2626; color: white; }
+    .primary { background: #1e3a8a; color: white; }
+    .log { background: white; padding: 12px; border-radius: 8px; font-family: monospace; font-size: 12px; margin-top: 16px; max-height: 400px; overflow-y: auto; border: 1px solid #e2e8f0; }
+    .log div { padding: 2px 0; border-bottom: 1px solid #f1f5f9; }
+    .ok { color: #16a34a; font-weight: bold; }
+    .err { color: #dc2626; font-weight: bold; }
+    table { width: 100%; border-collapse: collapse; background: white; font-size: 12px; border-radius: 8px; overflow: hidden; margin-top: 12px; }
+    th, td { padding: 8px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+    th { background: #f1f5f9; }
+    tr.success { background: #dcfce7; }
+    tr.error { background: #fee2e2; }
+    .badge { padding: 2px 6px; border-radius: 4px; color: white; font-size: 10px; }
+    .badge.ok { background: #16a34a; }
+    .badge.fail { background: #dc2626; }
+  </style>
+</head>
+<body>
+  <h2>🧹 Alat Pembersih SW</h2>
+  <p>Klik tombol di bawah untuk membersihkan cache lama, lalu cek file.</p>
+  
+  <button class="danger" onclick="killSW()">🔴 Hapus SW & Cache</button>
+  <button class="primary" onclick="checkFiles()">🔍 Cek File Sekarang</button>
+
+  <div class="log" id="log"></div>
+  <table>
+    <thead><tr><th>File</th><th>Status</th><th>Tipe</th><th>Hasil</th></tr></thead>
+    <tbody id="results"></tbody>
+  </table>
+
+  <script>
+    function log(msg, type = '') {
+      const el = document.getElementById('log');
+      const d = document.createElement('div');
+      d.className = type;
+      d.textContent = `[${new Date().toLocaleTimeString()}] ${msg}`;
+      el.prepend(d);
+    }
+
+    async function killSW() {
+      log('Mulai membersihkan...');
+      
+      // 1. Unregister semua service worker
+      if ('serviceWorker' in navigator) {
+        const regs = await navigator.serviceWorker.getRegistrations();
+        log(`Ditemukan ${regs.length} service worker.`, 'ok');
+        for (const reg of regs) {
+          const success = await reg.unregister();
+          log(`Unregister: ${success ? 'OK' : 'GAGAL'}`, success ? 'ok' : 'err');
+        }
+      } else {
+        log('Browser tidak mendukung SW (aman).');
+      }
+
+      // 2. Hapus semua Cache Storage
+      if ('caches' in window) {
+        const keys = await caches.keys();
+        log(`Ditemukan ${keys.length} cache.`, 'ok');
+        for (const key of keys) {
+          const deleted = await caches.delete(key);
+          log(`Hapus cache "${key}": ${deleted ? 'OK' : 'GAGAL'}`, deleted ? 'ok' : 'err');
+        }
+      }
+
+      // 3. Hapus localStorage
+      try { localStorage.clear(); log('localStorage dibersihkan.', 'ok'); } catch(e) {}
+
+      log('SELESAI. Refresh halaman ini (tarik ke bawah) untuk hasil bersih.', 'ok');
+    }
+
+    async function checkFiles() {
+      const files = [
+        './index.html',
+        './src/js/app.js',
+        './src/js/modules/dashboard/index.js',
+        './src/js/views/dashboard/index.js',
+        './src/js/services/database/index.js',
+        './src/js/utils/dom.js'
+      ];
+      const tbody = document.getElementById('results');
+      tbody.innerHTML = '';
+      log('Mulai cek file...');
+
+      for (const file of files) {
+        const tr = document.createElement('tr');
+        try {
+          const res = await fetch(file + '?v=' + Date.now(), { cache: 'no-store' });
+          const type = res.headers.get('content-type') || '-';
+          
+          if (!res.ok) {
+            tr.className = 'error';
+            tr.innerHTML = `<td>${file}</td><td>${res.status}</td><td>${type}</td><td><span class="badge fail">GAGAL</span></td>`;
+            log(`FAIL: ${file} (${res.status})`, 'err');
+          } else {
+            const isJs = file.endsWith('.js');
+            const mimeOk = !isJs || type.includes('javascript');
+            tr.className = mimeOk ? 'success' : 'error';
+            tr.innerHTML = `<td>${file}</td><td>${res.status}</td><td>${type}</td><td><span class="badge ${mimeOk?'ok':'fail'}">${mimeOk?'OK':'MIME SALAH'}</span></td>`;
+            log(`OK: ${file}`, 'ok');
+          }
+        } catch (err) {
+          tr.className = 'error';
+          tr.innerHTML = `<td>${file}</td><td colspan="2">-</td><td><span class="badge fail">NETWORK</span></td>`;
+          log(`NETWORK ERROR: ${file}`, 'err');
+        }
+        tbody.appendChild(tr);
+      }
+      log('Cek file selesai.', 'ok');
+    }
+
+    window.addEventListener('DOMContentLoaded', () => {
+      log('Halaman siap. Klik "Hapus SW & Cache" dulu.');
+    });
+  </script>
+</body>
+</html>
